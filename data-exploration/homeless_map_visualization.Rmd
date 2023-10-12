@@ -1,0 +1,102 @@
+---
+title: "Homeless Shelter Map Visualization"
+output: pdf_document
+date: "2023-10-17"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Map Visualization of Homeless Shelters
+
+```{r include=FALSE}
+# Load libraries
+library(sf)
+library(ggplot2)
+library(tidyverse)
+library(ggthemes)
+```
+```{r include=FALSE}
+# Read map data
+
+# Idea: https://stackoverflow.com/questions/76854004/r-making-a-map-of-canadian-postal-codes
+
+# A forward sortation area (FSA) is a way to designate a geographical unit based on the first three characters in a Canadian postal code. All postal codes that start with the same three characters—for example, K1A—are together considered an FSA.
+
+# Map shape file of boundaries comes from Census Forward Sortation Area Boundary File from Statistics Canada: https://www150.statcan.gc.ca/n1/en/catalogue/92-179-X
+
+# Reference guide: https://www150.statcan.gc.ca/n1/pub/92-179-g/92-179-g2021001-eng.htm
+
+# Specific file from 2021 Census Year: https://www12.statcan.gc.ca/census-recensement/alternative_alternatif.cfm?l=eng&dispext=zip&teng=lfsa000b21a_e.zip&k=%20%20%20158240&loc=//www12.statcan.gc.ca/census-recensement/2021/geo/sip-pis/boundary-limites/files-fichiers/lfsa000b21a_e.zip
+
+# Feature columns: https://www150.statcan.gc.ca/n1/pub/92-179-g/2021001/tbl/tbl4_1-eng.htm
+
+canada_map <- st_read("lfsa000b21a_e\\lfsa000b21a_e\\lfsa000b21a_e.shp")
+```
+```{r include=FALSE}
+# get data
+shelter_occupancy_2023 <- read.csv("daily_shelter_overnight_occupancy.csv")
+
+shelter_occupancy_2022 <- read.csv("daily-shelter-overnight-service-occupancy-capacity-2022.csv")
+
+shelter_occupancy_2021 <- read.csv("daily-shelter-overnight-service-occupancy-capacity-2021.csv")
+```
+
+```{r include=FALSE}
+# add relevant features to data
+
+shelter_occupancy_2023 <- shelter_occupancy_2023 %>%
+  mutate(CFSAUID = substr(LOCATION_POSTAL_CODE, 0, 3), OCCUPIED_BEDS_OR_ROOMS = ifelse(is.na(OCCUPIED_BEDS), 0, OCCUPIED_BEDS) + ifelse(is.na(OCCUPIED_ROOMS), 0, OCCUPIED_ROOMS), CAPACITY_BEDS_OR_ROOMS = ifelse(is.na(CAPACITY_ACTUAL_BED), 0, CAPACITY_ACTUAL_BED) + ifelse(is.na(CAPACITY_ACTUAL_ROOM), 0, CAPACITY_ACTUAL_ROOM))
+
+# todo: add number of shelters
+
+daily_shelter_occupancy_by_cfsauid <- select(shelter_occupancy_2023, "CFSAUID", "OCCUPIED_BEDS_OR_ROOMS", "CAPACITY_BEDS_OR_ROOMS", "OCCUPANCY_DATE") %>%
+  filter(startsWith(CFSAUID, 'M')) %>%
+  group_by(CFSAUID, OCCUPANCY_DATE) %>%
+  summarise(OCCUPIED_BEDS_OR_ROOMS = sum(OCCUPIED_BEDS_OR_ROOMS), CAPACITY_BEDS_OR_ROOMS = sum(CAPACITY_BEDS_OR_ROOMS)) %>%
+  mutate(OCCUPANCY_RATE =  round(OCCUPIED_BEDS_OR_ROOMS * 100 / CAPACITY_BEDS_OR_ROOMS, 2))
+  
+```
+```{r}
+ontario <-  canada_map[canada_map$PRUID == '35',]
+toronto <- ontario[startsWith(ontario$CFSAUID, 'M'),]
+
+occupancy_map <- full_join(toronto, daily_shelter_occupancy_by_cfsauid, by = "CFSAUID") %>%
+  mutate(OCCUPANCY_DATE = replace_na(OCCUPANCY_DATE, ""))
+```
+
+
+```{r include=FALSE}
+# Save map images to folder
+
+occupancy_dates <- unique(occupancy_map$OCCUPANCY_DATE)
+
+for (o_date in occupancy_dates) {
+  df <- occupancy_map[occupancy_map$OCCUPANCY_DATE %in% c(o_date, ""),] %>%
+   mutate(OCCUPANCY_DATE = o_date)
+  
+  graph1 <- ggplot(data = df) + 
+    geom_sf(aes(fill = OCCUPANCY_RATE)) +
+  theme_map() +
+    scale_fill_continuous(name= "% occupancy", type = "viridis", na.value = "white", limits = c(0, 100)) + labs(title = str_c("Occupancy of Homeless Shelters in Toronto on ", o_date)) + theme(
+    # plot.background = element_rect(fill = 'white'),
+    legend.position = "right",
+    legend.key.size = unit(32, 'mm'),
+    legend.text = element_text(size = 15),
+    legend.title = element_text(size = 20),
+    legend.box.background = element_rect(fill = NULL),
+    plot.title = element_text(colour = "white", size = 25)
+
+    )
+  
+  ggsave(
+    filename = file.path("images", str_c(o_date, ".png")), 
+    plot = graph1, 
+    height = 300, width = 400,
+    units = "mm", dpi = 600
+    )
+
+}
+```
+
