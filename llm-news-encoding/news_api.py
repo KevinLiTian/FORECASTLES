@@ -23,11 +23,14 @@ if __name__ == "__main__":
 
     if response.status_code == 200:
         response_obj = response.json()
-        if response_obj["number"] > 0:
+        if len(response_obj["news"]) > 0:
             # Write news headlines to file
             with open('news_headlines.csv', 'a', newline='') as file:
                 writer = csv.writer(file)
                 for article in response_obj["news"]:
                     writer.writerow([article["publish_date"], article["title"]])
+                print(f"{len(response_obj['news'])} headlines added")
+        else:
+            print("No news articles found")
     else:
         print(f"Server responded with status code {response.status_code}: {response.reason}")
