@@ -189,28 +189,28 @@ def plot_loss(history, filename):
 
 
 def train_mlp():
-    X_train_scaled, X_test_scaled, y_train, y_test = load_data()
-    train_dataset = DefaultDataset(X_train_scaled.to_numpy(), np.log10(np.expand_dims(np.asarray(y_train), axis=-1)))
-    test_dataset = DefaultDataset(X_test_scaled.to_numpy(), np.log10(np.expand_dims(np.asarray(y_test), axis=-1)))
+    X_train_scaled, X_test_scaled, y_train, y_test, _ = load_data(include_capacity=True)
+    train_dataset = DefaultDataset(X_train_scaled.to_numpy(), np.log(np.expand_dims(np.asarray(y_train)+1.0e-1, axis=-1)))
+    test_dataset = DefaultDataset(X_test_scaled.to_numpy(), np.log(np.expand_dims(np.asarray(y_test)+1.0e-1, axis=-1)))
 
     x, y = train_dataset[10]
     input_shape = x.shape[0]
     model = MLP(input_shape, 1)
-    summary(model, input_size=(14,), batch_size=128)
+    summary(model, input_size=(input_shape,), batch_size=128)
     train_dataloader = DataLoader(dataset=train_dataset, batch_size=32, shuffle=True)
     test_dataloader = DataLoader(dataset=test_dataset, batch_size=512, shuffle=True)
 
     criterion = nn.MSELoss()
-    optimizer = torch.optim.Adam(model.parameters(), lr=1.0e-4)
+    optimizer = torch.optim.Adam(model.parameters(), lr=3.0e-5)
     model, history = train(
         model,
         criterion,
         optimizer,
         train_dataloader,
         test_dataloader,
-        save_file_name='./mlp_model_log.pt',
-        max_epochs_stop=3,
-        n_epochs=7,
+        save_file_name='./mlp_model_log_cap.pt',
+        max_epochs_stop=20,
+        n_epochs=100,
         print_every=1)
 
     plot_loss(history, "./loss.jpg")
@@ -231,7 +231,7 @@ def train_seq():
                       seq_len=30)
     summary(model, input_size=(14, 30), batch_size=128)
     train_dataloader = DataLoader(dataset=train_dataset, batch_size=32, shuffle=True)
-    test_dataloader = DataLoader(dataset=test_dataset, batch_size=512, shuffle=True)
+    test_dataloader = DataLoader(dataset=test_dataset, batch_size=512, shuffle=False)
 
     criterion = nn.MSELoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=1.0e-4)
@@ -242,12 +242,37 @@ def train_seq():
         train_dataloader,
         test_dataloader,
         save_file_name='./trans_model_log.pt',
-        max_epochs_stop=3,
-        n_epochs=7,
+        max_epochs_stop=5,
+        n_epochs=10,
         print_every=1)
 
     plot_loss(history, "./loss.jpg")
 
 
+def evaluate(model_path):
+    X_train_scaled, X_test_scaled, y_train, y_test, df_copy = load_data(include_capacity=True)
+    train_dataset = DefaultDataset(X_train_scaled.to_numpy(), np.log(np.expand_dims(np.asarray(y_train), axis=-1)))
+    test_dataset = DefaultDataset(X_test_scaled.to_numpy(), np.log(np.expand_dims(np.asarray(y_test), axis=-1)))
+
+    x, y = train_dataset[10]
+    input_shape = x.shape[0]
+    model = MLP(input_shape, 1)
+    model.eval()
+    model.load_state_dict(torch.load(model_path))
+    y_pred = model(torch.from_numpy(X_test_scaled.to_numpy()).float())
+    y_pred = y_pred.detach().numpy()
+    y_pred = np.squeeze(np.exp(y_pred))
+    df_copy['PRED_SC'] = y_pred
+    plt.figure(figsize=(8, 6))
+    plt.plot(df_copy.groupby('OCCUPANCY_DATE')['SERVICE_USER_COUNT'].mean())
+    plt.plot(df_copy.groupby('OCCUPANCY_DATE')['PRED_SC'].mean())
+    plt.legend(['Actual', 'Predicted'])
+    plt.xlabel('Day')
+    plt.ylabel('Average user count')
+    plt.title('Evaluation of predicted user counts')
+    plt.savefig('./trained_models/mlp_model_log_cap_eval.jpg')
+
+
 if __name__ == "__main__":
-    train_mlp()
+    # train_mlp()
+    evaluate('./mlp_model_log_cap.pt')

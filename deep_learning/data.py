@@ -5,7 +5,7 @@ import torch
 from torch.utils.data import Dataset, DataLoader
 
 
-def load_data():
+def load_data(include_capacity=True):
     occupancy_data_2023 = pd.read_csv("../data/occupancy/Daily_shelter_overnight_occupancy.csv", low_memory=False)
     occupancy_data_2021 = pd.read_csv("../data/occupancy/daily-shelter-overnight-service-occupancy-capacity-2021.csv",
                                       low_memory=False)
@@ -21,13 +21,15 @@ def load_data():
     toronto_data['MONTH'] = toronto_data['OCCUPANCY_DATE'].dt.month
     toronto_data['DAY'] = toronto_data['OCCUPANCY_DATE'].dt.day
     toronto_data['YEAR'] = toronto_data['OCCUPANCY_DATE'].dt.year
-    toronto_data_dr = toronto_data.drop(
-        columns=['_id', 'OCCUPANCY_DATE', 'ORGANIZATION_ID', 'ORGANIZATION_NAME', 'SHELTER_ID', 'SHELTER_GROUP',
+    drop_cols = ['_id', 'ORGANIZATION_ID', 'ORGANIZATION_NAME', 'SHELTER_ID', 'SHELTER_GROUP',
                  'LOCATION_ID', 'LOCATION_NAME', 'LOCATION_ADDRESS', 'LOCATION_CITY', 'LOCATION_PROVINCE', 'PROGRAM_ID',
                  'PROGRAM_NAME', 'OVERNIGHT_SERVICE_TYPE', 'PROGRAM_AREA', 'CAPACITY_FUNDING_BED',
                  'OCCUPIED_BEDS', 'UNOCCUPIED_BEDS', 'CAPACITY_FUNDING_ROOM', 'OCCUPIED_ROOMS', 'UNOCCUPIED_ROOMS',
-                 'OCCUPANCY_RATE_ROOMS', "OCCUPANCY_RATE_BEDS"
-                 ])
+                 'OCCUPANCY_RATE_ROOMS', "OCCUPANCY_RATE_BEDS", 'UNAVAILABLE_BEDS','UNAVAILABLE_ROOMS'
+                 ]
+    if not include_capacity:
+        drop_cols.extend(['CAPACITY_ACTUAL_BED', 'CAPACITY_ACTUAL_ROOM'])
+    toronto_data_dr = toronto_data.drop(columns=drop_cols)
     toronto_data_dr_nan = toronto_data_dr[toronto_data_dr["PROGRAM_MODEL"].notna()]
     # Creating list of dummy columns
     to_get_dummies_for = ['SECTOR']
@@ -45,7 +47,9 @@ def load_data():
     toronto_data_dr_nan["postal_code"] = toronto_data_dr_nan['LOCATION_POSTAL_CODE'].apply(lambda x: x.split(" ")[0])
     toronto_data_dr_nan["postal_code"] = toronto_data_dr_nan["postal_code"].astype('category')
     toronto_data_dr_nan["postal_code_num"] = pd.Categorical(toronto_data_dr_nan["postal_code"]).codes
-    final_df = toronto_data_dr_nan.drop(columns=["postal_code", "LOCATION_POSTAL_CODE"])
+    final_df = toronto_data_dr_nan.drop(columns=["postal_code", "LOCATION_POSTAL_CODE", 'OCCUPANCY_DATE'])
+    occu_final_df = toronto_data_dr_nan.drop(columns=["postal_code", "LOCATION_POSTAL_CODE"])
+    occu_final_df = occu_final_df[occu_final_df['YEAR']==2023]
     final_df = final_df.fillna(value=0.0)
     test = final_df[final_df['YEAR']==2023]
     train = final_df[(final_df['YEAR']==2021) | (final_df['YEAR']==2022)]
@@ -62,7 +66,7 @@ def load_data():
     X_test_scaled = sc.transform(X_test)
     X_test_scaled = pd.DataFrame(X_test_scaled, columns=X_train.columns)
 
-    return X_train_scaled, X_test_scaled, y_train, y_test
+    return X_train_scaled, X_test_scaled, y_train, y_test, occu_final_df
 
 
 class DefaultDataset(Dataset):
