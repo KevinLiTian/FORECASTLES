@@ -78,10 +78,41 @@ class DefaultDataset(Dataset):
         return self.x[index].float(), self.y[index].float()
 
 
+class SequenceDataset(Dataset):
+    def __init__(self, data_x, data_y, window=30):
+        self.x = torch.from_numpy(data_x)
+        self.y = torch.from_numpy(data_y)
+        self.length = len(data_y)-window+1
+        self.window = window
+
+    def __len__(self):
+        return self.length
+
+    def __getitem__(self, index):
+        return self.x[index:index+self.window].float(), self.y[index+self.window-1].float()
+
+
+class NewsDataset(Dataset):
+    def __init__(self, data_x, data_y, news_data, window=30):
+        self.x = torch.from_numpy(data_x)
+        self.y = torch.from_numpy(data_y)
+        self.length = len(data_y)-window+1
+        self.window = window
+        self.news_data = news_data
+
+    def __len__(self):
+        return self.length
+
+    def __getitem__(self, index):
+        return self.news_data[index:index+self.window], self.x[index:index+self.window].float(), self.y[index+self.window-1].float()
+
+
 if __name__ == "__main__":
     X_train_scaled, X_test_scaled, y_train, y_test = load_data()
     train_dataset = DefaultDataset(X_train_scaled.to_numpy(), np.asarray(y_train))
     test_dataset = DefaultDataset(X_test_scaled.to_numpy(), np.asarray(y_test))
+    # train_dataset = SequenceDataset(X_train_scaled.to_numpy(), np.log10(np.expand_dims(np.asarray(y_train), axis=-1)))
+    # test_dataset = SequenceDataset(X_test_scaled.to_numpy(), np.log10(np.expand_dims(np.asarray(y_test), axis=-1)))
 
     x, y = train_dataset[10]
     print(x.shape, y.shape)

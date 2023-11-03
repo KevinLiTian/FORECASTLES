@@ -6,6 +6,7 @@ import numpy as np
 from timeit import default_timer as timer
 from torch.utils.data import Dataset, random_split, DataLoader
 import matplotlib.pyplot as plt
+from encoder import *
 
 
 class MLP(nn.Module):
@@ -77,4 +78,36 @@ class PositionalEncoding(nn.Module):
         # print('x:', x.shape)
         # print('self.pe:', self.pe.shape)
         x = x + self.pe[:, :x.size(1), :]
+        return x
+
+
+class NewsModel(nn.Module):
+    def __init__(self, input_dim, hidden_dim, num_layers, num_heads, output_dim, seq_len):
+        super(NewsModel, self).__init__()
+
+        self.embedding = nn.Embedding(input_dim, hidden_dim)
+        self.fc0 = nn.Linear(input_dim, hidden_dim)
+        self.positional_encoding = PositionalEncoding(hidden_dim, max_len=1)
+        encoder_layer = nn.TransformerEncoderLayer(hidden_dim, num_heads, batch_first=True, dropout=0.1)
+        encoder_norm = nn.LayerNorm(hidden_dim)
+        self.encoder = nn.TransformerEncoder(encoder_layer, num_layers, encoder_norm)
+        self.fc = nn.Linear(hidden_dim*seq_len, 32)
+        self.fc2 = nn.Linear(32, output_dim)
+
+    def forward(self, x, news):
+        # x = self.embedding(x)
+        # print('x:', x[:2, :, :])
+        news_embed = encode_text(news)
+        x = self.fc0(x)
+        # print('x:', x[:2, :, :])
+        x = self.positional_encoding(x)
+        # print('x:', x[:2, :, :])
+        x = self.encoder(x)
+        x = torch.concat([x, news_embed], dim=1)
+        # print('x:', x[:2, :, :])
+        # print('x:', x[:2, :, :])
+        x = torch.flatten(x, start_dim=1)
+        x = self.fc(x)
+        x = torch.nn.ReLU(x)
+        x = self.fc2(x)
         return x

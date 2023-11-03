@@ -188,7 +188,7 @@ def plot_loss(history, filename):
     plt.savefig(filename)
 
 
-if __name__ == "__main__":
+def train_mlp():
     X_train_scaled, X_test_scaled, y_train, y_test = load_data()
     train_dataset = DefaultDataset(X_train_scaled.to_numpy(), np.log10(np.expand_dims(np.asarray(y_train), axis=-1)))
     test_dataset = DefaultDataset(X_test_scaled.to_numpy(), np.log10(np.expand_dims(np.asarray(y_test), axis=-1)))
@@ -196,7 +196,7 @@ if __name__ == "__main__":
     x, y = train_dataset[10]
     input_shape = x.shape[0]
     model = MLP(input_shape, 1)
-    summary(model, input_size=(14, ), batch_size=128)
+    summary(model, input_size=(14,), batch_size=128)
     train_dataloader = DataLoader(dataset=train_dataset, batch_size=32, shuffle=True)
     test_dataloader = DataLoader(dataset=test_dataset, batch_size=512, shuffle=True)
 
@@ -212,3 +212,42 @@ if __name__ == "__main__":
         max_epochs_stop=3,
         n_epochs=7,
         print_every=1)
+
+    plot_loss(history, "./loss.jpg")
+
+
+def train_seq():
+    X_train_scaled, X_test_scaled, y_train, y_test = load_data()
+    train_dataset = SequenceDataset(X_train_scaled.to_numpy(), np.log10(np.expand_dims(np.asarray(y_train), axis=-1)))
+    test_dataset = SequenceDataset(X_test_scaled.to_numpy(), np.log10(np.expand_dims(np.asarray(y_test), axis=-1)))
+
+    x, y = train_dataset[10]
+    input_shape = x.shape[0]
+    model = TimeModel(input_shape,
+                      hidden_dim=256,
+                      num_layers=1,
+                      num_heads=4,
+                      output_dim=1,
+                      seq_len=30)
+    summary(model, input_size=(14, 30), batch_size=128)
+    train_dataloader = DataLoader(dataset=train_dataset, batch_size=32, shuffle=True)
+    test_dataloader = DataLoader(dataset=test_dataset, batch_size=512, shuffle=True)
+
+    criterion = nn.MSELoss()
+    optimizer = torch.optim.Adam(model.parameters(), lr=1.0e-4)
+    model, history = train(
+        model,
+        criterion,
+        optimizer,
+        train_dataloader,
+        test_dataloader,
+        save_file_name='./trans_model_log.pt',
+        max_epochs_stop=3,
+        n_epochs=7,
+        print_every=1)
+
+    plot_loss(history, "./loss.jpg")
+
+
+if __name__ == "__main__":
+    train_mlp()
