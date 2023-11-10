@@ -275,4 +275,4 @@ def evaluate(model_path):
 
 if __name__ == "__main__":
     # train_mlp()
-    evaluate('./mlp_model_log_cap.pt')
+    evaluate('./trained_models/mlp_model_log_cap.pt')
