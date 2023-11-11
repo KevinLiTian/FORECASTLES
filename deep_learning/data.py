@@ -5,6 +5,61 @@ import torch
 from torch.utils.data import Dataset, DataLoader
 
 
+def load_sequence_data(data_path):
+    all_shelter_data = pd.read_csv(data_path, low_memory=False)
+    all_shelter_data['OCCUPANCY_DATE'] = pd.to_datetime(all_shelter_data['OCCUPANCY_DATE'])
+    toronto_data = all_shelter_data[all_shelter_data["LOCATION_CITY"] == "Toronto"]
+    toronto_data['MONTH'] = toronto_data['OCCUPANCY_DATE'].dt.month
+    toronto_data['DAY'] = toronto_data['OCCUPANCY_DATE'].dt.day
+    toronto_data['YEAR'] = toronto_data['OCCUPANCY_DATE'].dt.year
+    # df[df["LOCATION_CITY"]=="Toronto"].groupby(["OCCUPANCY_DATE", "LOCATION_ID", "SHELTER_ID", "SECTOR", "PROGRAM_MODEL", "CAPACITY_TYPE"])
+    drop_cols = ['_id', 'ORGANIZATION_ID', 'ORGANIZATION_NAME', 'SHELTER_GROUP',
+                 'LOCATION_NAME', 'LOCATION_ADDRESS', 'LOCATION_CITY', 'LOCATION_PROVINCE', 'PROGRAM_ID',
+                 'PROGRAM_NAME', 'OVERNIGHT_SERVICE_TYPE', 'PROGRAM_AREA', 'CAPACITY_FUNDING_BED',
+                 'OCCUPIED_BEDS', 'UNOCCUPIED_BEDS', 'CAPACITY_FUNDING_ROOM', 'OCCUPIED_ROOMS', 'UNOCCUPIED_ROOMS',
+                 'OCCUPANCY_RATE_ROOMS', "OCCUPANCY_RATE_BEDS", 'UNAVAILABLE_BEDS','UNAVAILABLE_ROOMS',
+                 "LOCATION_POSTAL_CODE", "Neighbourhood", "Neighbourhood Number", 'LAT', 'LON',
+                 'CAPACITY_ACTUAL_BED', 'CAPACITY_ACTUAL_ROOM'
+                 ]
+    toronto_data_dr = toronto_data.drop(columns=drop_cols)
+    toronto_data_dr_nan = toronto_data_dr[toronto_data_dr["PROGRAM_MODEL"].notna()]
+    # Creating list of dummy columns
+    to_get_dummies_for = ['SECTOR']
+    # Creating dummy variables
+    toronto_data_dr_nan = pd.get_dummies(data=toronto_data_dr_nan, columns=to_get_dummies_for)
+
+    # Mapping overtime and attrition
+    dict_prog_mod = {'Emergency': 1, 'Transitional': 0}
+    dict_cap_type = {'Bed Based Capacity': 1, 'Room Based Capacity': 0}
+
+    toronto_data_dr_nan['prog_mod'] = toronto_data_dr_nan["PROGRAM_MODEL"].map(dict_prog_mod)
+    toronto_data_dr_nan['cap_type'] = toronto_data_dr_nan["CAPACITY_TYPE"].map(dict_cap_type)
+    toronto_data_dr_nan = toronto_data_dr_nan.drop(columns=["PROGRAM_MODEL", "CAPACITY_TYPE"])
+
+    final_df = toronto_data_dr_nan
+    occu_final_df = toronto_data_dr_nan
+    occu_final_df = occu_final_df[occu_final_df['YEAR']==2023]
+    info = {"test_dated": occu_final_df.reset_index(drop=True)}
+    final_df = final_df.fillna(value=0.0)
+    test = final_df[final_df['YEAR']==2023]
+    train = final_df[(final_df['YEAR']==2021) | (final_df['YEAR']==2022)]
+    train = train.drop(columns=['YEAR'])
+    test = test.drop(columns=['YEAR'])
+    X_train, X_test, y_train, y_test = train, test, train['SERVICE_USER_COUNT'], test['SERVICE_USER_COUNT']
+    sc = StandardScaler()
+    # print(list(X_train.select_dtypes(include=['object']).columns))
+    # Fit_transform on train data
+    cols = list(X_train.columns)
+    cols.remove("OCCUPANCY_DATE")
+    X_train[cols] = sc.fit_transform(X_train[cols])
+
+    # Transform on test data
+    X_test[cols] = sc.transform(X_test[cols])
+    info["scaler"] = sc
+
+    return X_train.reset_index(drop=True), X_test.reset_index(drop=True), y_train.reset_index(drop=True), y_test.reset_index(drop=True), info
+
+
 def load_data(include_capacity=True):
     occupancy_data_2023 = pd.read_csv("../data/occupancy/Daily_shelter_overnight_occupancy.csv", low_memory=False)
     occupancy_data_2021 = pd.read_csv("../data/occupancy/daily-shelter-overnight-service-occupancy-capacity-2021.csv",
@@ -84,16 +139,106 @@ class DefaultDataset(Dataset):
 
 class SequenceDataset(Dataset):
     def __init__(self, data_x, data_y, window=30):
-        self.x = torch.from_numpy(data_x)
-        self.y = torch.from_numpy(data_y)
-        self.length = len(data_y)-window+1
+        # self.x = torch.from_numpy(data_x)
+        # self.y = torch.from_numpy(data_y)
+        cols = [col for col in data_x.columns if col[0]!='V']
+        data_cols = [col for col in data_x.columns]
+        data_cols.remove("OCCUPANCY_DATE")
+        self.data_cols = data_cols
+        cols.remove("OCCUPANCY_DATE")
+        cols.remove("SERVICE_USER_COUNT")
+        cols.remove("MONTH")
+        cols.remove("DAY")
+        data_x["GNUM"] = data_x.groupby(cols).ngroup()
+        data_x["LOG_CNT"] = data_y
+        self.x = data_x
+        self.cumsum = np.cumsum(np.clip((data_x.groupby("GNUM").count()["OCCUPANCY_DATE"].to_numpy() - window), a_min=0, a_max=None))
+        self.length = self.cumsum[-1]
         self.window = window
+        self.gnum_subsets = []
+        for gnum in self.x["GNUM"]:
+            subset = self.x[self.x["GNUM"]==gnum]
+            self.gnum_subsets.append((subset[self.data_cols], np.expand_dims(subset["LOG_CNT"].to_numpy(), axis=-1)))
 
     def __len__(self):
         return self.length
 
     def __getitem__(self, index):
-        return self.x[index:index+self.window].float(), self.y[index+self.window-1].float()
+        diff = self.cumsum-index
+        gnum = np.argmax(diff>0)
+        if gnum==0:
+          g_idx = index
+        else:
+          g_idx = index-self.cumsum[gnum-1]
+        # subset_x, subset_y  = self.gnum_subsets[gnum]
+        return torch.from_numpy(self.gnum_subsets[gnum][0].to_numpy())[g_idx:g_idx+self.window].float(), torch.from_numpy(self.gnum_subsets[gnum][1])[g_idx+self.window].float()
+
+
+class SlowSequenceDataset(Dataset):
+    def __init__(self, data_x, data_y, window=30):
+        # self.x = torch.from_numpy(data_x)
+        # self.y = torch.from_numpy(data_y)
+        cols = [col for col in data_x.columns if col[0] != 'V']
+        data_cols = [col for col in data_x.columns]
+        data_cols.remove("OCCUPANCY_DATE")
+        self.data_cols = data_cols
+        cols.remove("OCCUPANCY_DATE")
+        cols.remove("SERVICE_USER_COUNT")
+        cols.remove("MONTH")
+        cols.remove("DAY")
+        data_x["GNUM"] = data_x.groupby(cols).ngroup()
+        data_x["LOG_CNT"] = data_y
+        data_x['index_col'] = list(data_x.index)
+        self.x = data_x
+        self.cumsum = np.cumsum(
+            np.clip((data_x.groupby("GNUM").count()["OCCUPANCY_DATE"].to_numpy() - window), a_min=0, a_max=None))
+        self.length = self.cumsum[-1]
+        self.window = window
+        # self.gnum_subsets = []
+        # for gnum in self.x["GNUM"]:
+        #     subset = self.x[self.x["GNUM"]==gnum]
+        #     self.gnum_subsets.append((subset[self.data_cols],))
+
+    def __len__(self):
+        return self.length
+
+    def __getitem__(self, index):
+        diff = self.cumsum - index
+        gnum = np.argmax(diff > 0)
+        if gnum == 0:
+            g_idx = index
+        else:
+            g_idx = index - self.cumsum[gnum - 1]
+        subset = self.x[self.x["GNUM"] == gnum]
+        # print(subset["index_col"])
+        return torch.from_numpy(subset[self.data_cols].to_numpy())[g_idx:g_idx + self.window].float(), \
+               torch.from_numpy(np.expand_dims(subset["LOG_CNT"].to_numpy(), axis=-1))[g_idx + self.window].float(), \
+               subset["index_col"].to_numpy()[g_idx + self.window], subset.iloc[g_idx:g_idx + self.window]
+        # subset_x, subset_y  = self.gnum_subsets[gnum]
+        # return torch.from_numpy(self.gnum_subsets[gnum][0].to_numpy())[g_idx:g_idx+self.window].float(), torch.from_numpy(self.gnum_subsets[gnum][1])[g_idx+self.window].float()
+
+    def get_gid(self, index):
+        diff = self.cumsum - index
+        gnum = np.argmax(diff > 0)
+        if gnum == 0:
+            g_idx = index
+        else:
+            g_idx = index - self.cumsum[gnum - 1]
+        return g_idx
+
+    def get_df(self):
+        return self.x
+
+    def get_gnum(self, index):
+        diff = self.cumsum - index
+        gnum = np.argmax(diff > 0)
+        return gnum
+
+    def get_df_index(self, index):
+        gnum = self.get_gnum(index)
+        gidx = self.get_gid(index)
+        subset = self.x[self.x["GNUM"] == gnum]
+        return subset["index_col"][gidx + self.window]
 
 
 class NewsDataset(Dataset):

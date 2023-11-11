@@ -4,6 +4,7 @@ import numpy as np
 from timeit import default_timer as timer
 from torch.utils.data import Dataset, random_split, DataLoader
 import matplotlib.pyplot as plt
+import tqdm
 from model import *
 from data import *
 from torchsummary import summary
@@ -216,37 +217,38 @@ def train_mlp():
     plot_loss(history, "./loss.jpg")
 
 
-def train_seq():
-    X_train_scaled, X_test_scaled, y_train, y_test = load_data()
-    train_dataset = SequenceDataset(X_train_scaled.to_numpy(), np.log10(np.expand_dims(np.asarray(y_train), axis=-1)))
-    test_dataset = SequenceDataset(X_test_scaled.to_numpy(), np.log10(np.expand_dims(np.asarray(y_test), axis=-1)))
+def train_seq(combined_data_path):
+    X_train_scaled, X_test_scaled, y_train, y_test, info = load_sequence_data(combined_data_path)
+    train_dataset = SequenceDataset(X_train_scaled, np.log(np.asarray(y_train)))
+    test_dataset = SequenceDataset(X_test_scaled, np.log(np.asarray(y_test)))
 
     x, y = train_dataset[10]
-    input_shape = x.shape[0]
+    input_shape = x.shape[1]
+    print(f"input shape {input_shape}")
     model = TimeModel(input_shape,
-                      hidden_dim=256,
+                      hidden_dim=512,
                       num_layers=1,
                       num_heads=4,
                       output_dim=1,
-                      seq_len=30)
-    summary(model, input_size=(14, 30), batch_size=128)
-    train_dataloader = DataLoader(dataset=train_dataset, batch_size=32, shuffle=True)
-    test_dataloader = DataLoader(dataset=test_dataset, batch_size=512, shuffle=False)
+                      seq_len=30).to("cuda")
+    train_dataloader = DataLoader(dataset=train_dataset, batch_size=128, shuffle=True)
+    test_dataloader = DataLoader(dataset=test_dataset, batch_size=128, shuffle=False)
 
     criterion = nn.MSELoss()
-    optimizer = torch.optim.Adam(model.parameters(), lr=1.0e-4)
+    optimizer = torch.optim.Adam(model.parameters(), lr=1.0e-5)
     model, history = train(
         model,
         criterion,
         optimizer,
         train_dataloader,
         test_dataloader,
-        save_file_name='./trans_model_log.pt',
-        max_epochs_stop=5,
-        n_epochs=10,
+        save_file_name='./trained_models/trans_model_log2.pt',
+        max_epochs_stop=50,
+        n_epochs=100,
         print_every=1)
 
     plot_loss(history, "./loss.jpg")
+    return model, history
 
 
 def evaluate(model_path):
@@ -273,6 +275,48 @@ def evaluate(model_path):
     plt.savefig('./trained_models/mlp_model_log_cap_eval.jpg')
 
 
+def open_eval(model_path, combined_data_path):
+    X_train_scaled, X_test_scaled, y_train, y_test, info = load_sequence_data(combined_data_path)
+    cols = list(X_train_scaled.columns)
+    cols.remove("OCCUPANCY_DATE")
+    train_dataset = SequenceDataset(X_train_scaled, np.log(np.asarray(y_train)))
+    test_dataset = SequenceDataset(X_test_scaled, np.log(np.asarray(y_test)))
+
+    x, y, _, _ = train_dataset[10]
+    input_shape = x.shape[1]
+    print(f"input shape {input_shape}")
+    model = TimeModel(input_shape,
+                      hidden_dim=512,
+                      num_layers=1,
+                      num_heads=4,
+                      output_dim=1,
+                      seq_len=30).to("cuda")
+    model.eval()
+    model.load_state_dict(torch.load(model_path))
+    sc = info["scaler"]
+    # alt_cols = list(map(lambda x: x.replace('SERVICE_USER_COUNT', 'UNSCALED_SC'), cols))
+    test_dataset.x["UNSCALED_SC"] = y_test
+    for i in tqdm.tqdm(range(len(test_dataset))):
+        _, _, idx, ss = test_dataset[i]
+        ss[cols] = sc.inverse_transform(ss[cols])
+        ss = ss.drop(columns=["SERVICE_USER_COUNT"])
+        ss = ss.rename(columns={"UNSCALED_SC": "SERVICE_USER_COUNT"})
+        input = sc.transform(ss[cols])
+        y_pred = model(torch.unsqueeze(torch.from_numpy(input), dim=0).to("cuda").float())
+        test_dataset.x["UNSCALED_SC", idx] = np.exp(torch.squeeze(y_pred.detach()).to("cpu").item())
+    test_dataset.x["ACTUAL"] = y_test
+    plt.figure(figsize=(8, 6))
+    plt.plot(test_dataset.x.groupby('OCCUPANCY_DATE')['ACTUAL'].sum())
+    plt.plot(test_dataset.x.groupby('OCCUPANCY_DATE')['UNSCALED_SC'].sum())
+    plt.legend(['Actual', 'Predicted'])
+    plt.xlabel('Day')
+    plt.ylabel('Average user count')
+    plt.title('Evaluation of predicted user counts')
+    plt.savefig('./trans_model_eval.jpg')
+
+
 if __name__ == "__main__":
-    # train_mlp()
-    evaluate('./trained_models/mlp_model_log_cap.pt')
+    combined_data_path = "./shelter_neighbourhood_features_pca.csv"
+    train_seq(combined_data_path)
+    open_eval('/trained_models/trans_model_log2.pt', combined_data_path)
+    # evaluate('./trained_models/mlp_model_log_cap.pt')
