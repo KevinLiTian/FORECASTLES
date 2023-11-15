@@ -3,7 +3,7 @@ import numpy as np
 from sklearn.preprocessing import StandardScaler
 import torch
 from torch.utils.data import Dataset, DataLoader
-
+import tqdm
 
 def load_sequence_data(data_path):
     all_shelter_data = pd.read_csv(data_path, low_memory=False)
@@ -56,7 +56,7 @@ def load_sequence_data(data_path):
     # Transform on test data
     X_test[cols] = sc.transform(X_test[cols])
     info["scaler"] = sc
-
+    print("Data loaded")
     return X_train.reset_index(drop=True), X_test.reset_index(drop=True), y_train.reset_index(drop=True), y_test.reset_index(drop=True), info
 
 
@@ -156,7 +156,8 @@ class SequenceDataset(Dataset):
         self.length = self.cumsum[-1]
         self.window = window
         self.gnum_subsets = []
-        for gnum in self.x["GNUM"]:
+        max_gnum = self.x["GNUM"].max()
+        for gnum in tqdm.tqdm(range(max_gnum)):
             subset = self.x[self.x["GNUM"]==gnum]
             self.gnum_subsets.append((subset[self.data_cols], np.expand_dims(subset["LOG_CNT"].to_numpy(), axis=-1)))
 

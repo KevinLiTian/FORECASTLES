@@ -63,6 +63,9 @@ def train(model,
         train_loss = 0.0
         valid_loss = 0.0
 
+        train_mse = 0.0
+        valid_mse = 0.0
+
         # Set to training
         model.train()
         start = timer()
@@ -115,17 +118,20 @@ def train(model,
                     loss = criterion(output, target)
                     # Multiply average loss times the number of examples in batch
                     valid_loss += loss.item() * data.size(0)
+                    loss_mse = criterion(torch.exp(output), torch.exp(target))
+                    valid_mse += loss_mse.item() * data.size(0)
 
                 # Calculate average losses
                 train_loss = train_loss / len(train_loader.dataset)
                 valid_loss = valid_loss / len(valid_loader.dataset)
+                valid_mse = valid_mse / len(valid_loader.dataset)
 
                 history.append([train_loss, valid_loss])
 
                 # Print training and validation results
                 if (epoch + 1) % print_every == 0:
                     print(
-                        f'\nEpoch: {epoch} \tTraining Loss: {train_loss:.4f} \tValidation Loss: {valid_loss:.4f}'
+                            f'\nEpoch: {epoch} \tTraining Loss: {train_loss:.4f} \tValidation Loss: {valid_loss:.4f} \tValidation MSE: {valid_mse:.4f}'
                     )
                 # Save the model if validation loss decreases
                 if valid_loss < valid_loss_min:
@@ -221,7 +227,7 @@ def train_seq(combined_data_path):
     X_train_scaled, X_test_scaled, y_train, y_test, info = load_sequence_data(combined_data_path)
     train_dataset = SequenceDataset(X_train_scaled, np.log(np.asarray(y_train)))
     test_dataset = SequenceDataset(X_test_scaled, np.log(np.asarray(y_test)))
-
+    print("Datasets loaded")
     x, y = train_dataset[10]
     input_shape = x.shape[1]
     print(f"input shape {input_shape}")
@@ -231,8 +237,8 @@ def train_seq(combined_data_path):
                       num_heads=4,
                       output_dim=1,
                       seq_len=30).to("cuda")
-    train_dataloader = DataLoader(dataset=train_dataset, batch_size=128, shuffle=True)
-    test_dataloader = DataLoader(dataset=test_dataset, batch_size=128, shuffle=False)
+    train_dataloader = DataLoader(dataset=train_dataset, batch_size=32, shuffle=True)
+    test_dataloader = DataLoader(dataset=test_dataset, batch_size=32, shuffle=False)
 
     criterion = nn.MSELoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=1.0e-5)
@@ -243,7 +249,7 @@ def train_seq(combined_data_path):
         train_dataloader,
         test_dataloader,
         save_file_name='./trained_models/trans_model_log2.pt',
-        max_epochs_stop=50,
+        max_epochs_stop=5,
         n_epochs=100,
         print_every=1)
 
@@ -279,8 +285,8 @@ def open_eval(model_path, combined_data_path):
     X_train_scaled, X_test_scaled, y_train, y_test, info = load_sequence_data(combined_data_path)
     cols = list(X_train_scaled.columns)
     cols.remove("OCCUPANCY_DATE")
-    train_dataset = SequenceDataset(X_train_scaled, np.log(np.asarray(y_train)))
-    test_dataset = SequenceDataset(X_test_scaled, np.log(np.asarray(y_test)))
+    train_dataset = SlowSequenceDataset(X_train_scaled, np.log(np.asarray(y_train)))
+    test_dataset = SlowSequenceDataset(X_test_scaled, np.log(np.asarray(y_test)))
 
     x, y, _, _ = train_dataset[10]
     input_shape = x.shape[1]
@@ -317,6 +323,7 @@ def open_eval(model_path, combined_data_path):
 
 if __name__ == "__main__":
     combined_data_path = "./shelter_neighbourhood_features_pca.csv"
-    train_seq(combined_data_path)
-    open_eval('/trained_models/trans_model_log2.pt', combined_data_path)
+    model, history = train_seq(combined_data_path)
+
+    # open_eval('/trained_models/trans_model_log2.pt', combined_data_path)
     # evaluate('./trained_models/mlp_model_log_cap.pt')
