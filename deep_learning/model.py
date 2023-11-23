@@ -9,6 +9,69 @@ import matplotlib.pyplot as plt
 from encoder import *
 
 
+class Full_Transformer(nn.Module):
+    def __init__(self, input_dim, curr_state_dim, hidden_dim, num_layers, num_heads, output_dim):
+        super(Full_Transformer, self).__init__()
+        # decoder
+        self.fc1 = nn.Linear(curr_state_dim, 32)
+        self.batch_norm = nn.BatchNorm1d(32)
+        self.fc_decoder_input = nn.Linear(32, hidden_dim) # input_dim is the number of features of the current state (4)
+        self.decoder_positional_encoder = PositionalEncoding(hidden_dim, max_len=500)
+        # self.fc_encoder_output = nn.Linear(input_dim, hidden_dim)
+        decoder_norm = nn.LayerNorm(hidden_dim)
+        self.decoder = nn.TransformerDecoder(
+            nn.TransformerDecoderLayer(hidden_dim, num_heads, batch_first=True, dropout=0.0),
+            num_layers,
+            decoder_norm
+        )
+        # self.reduced_sum = ReducedSumLayer(dim=1)
+        self.fc_dec0 = nn.Linear(hidden_dim, 32)
+        self.fc_dec1 = nn.Linear(32, output_dim)
+        # encoder
+        self.fc0 = nn.Linear(input_dim, hidden_dim)
+        self.encoder_positional_encoder = PositionalEncoding(hidden_dim, max_len=500)
+        encoder_layer = nn.TransformerEncoderLayer(hidden_dim, num_heads, batch_first=True, dropout=0.3)
+        encoder_norm = nn.LayerNorm(hidden_dim)
+        self.encoder = nn.TransformerEncoder(encoder_layer, num_layers, encoder_norm)
+
+    def forward(self, x, past_days):
+        # encoder
+        # print('0 semantic_goal:', semantic_goal.shape)  # (batch_size, max_goal_sent_len) -> 64 , 14
+        # semantic_goal = self.embedding(semantic_goal)
+        # print('1 semantic_goal:', semantic_goal.shape)  # (batch_size, max_goal_sent_len, hidden_dim) -> 64 , 14 , 1024
+        x = self.fc0(x)
+        x = torch.nn.ReLU()(x)
+        x = self.encoder_positional_encoder(x)
+        # print('2 semantic_goal:', semantic_goal.shape)  # (batch_size, max_goal_sent_len, hidden_dim) -> 64 , 14 , 1024
+        x = self.encoder(x)
+        # print('3 x:', x.shape)  # (batch_size, max_goal_sent_len, hidden_dim) -> 64 , 14 , 1024
+        # decoder
+        # print("Past days", past_days.shape)
+        past_days = self.fc1(past_days)
+
+        past_days = torch.permute(past_days, (0, 2, 1))
+        past_days = self.batch_norm(past_days)
+        past_days = torch.permute(past_days, (0, 2, 1))
+        # print('4 current_state:', current_state.shape)  # (batch_size, num-obj, num-feature) -> 64 , 4 , 4
+        past_days = self.fc_decoder_input(past_days)
+        # print('5 current_state:', current_state.shape)  # (batch_size, num-obj, hidden_dim) -> 64 , 4 , 1024
+        past_days = self.decoder_positional_encoder(past_days)
+        # print('6 current_state:', current_state.shape)  # (batch_size, num-obj, hidden_dim) -> 64 , 4 , 1024
+        decoder_mask = self._generate_square_subsequent_mask(past_days.size(1)).to(past_days.device)
+        # print('7 decoder_mask:', decoder_mask.shape)  # (num-obj, num-obj) -> 4 , 4
+        output = self.decoder(past_days, x, tgt_mask=decoder_mask)
+        # print('8 output:', output.shape)  # (batch_size, num-obj , hidden_dim) -> 64 , 4 , 1024
+        output = self.fc_dec0(output)
+        output = torch.nn.ReLU()(output)
+        output = self.fc_dec1(output)
+        return output
+
+    def _generate_square_subsequent_mask(self, size):
+        mask = torch.triu(torch.ones(size, size)).transpose(0, 1)
+        mask = mask.masked_fill(mask == 0, float('-inf')).masked_fill(mask == 1, float(0.0))
+        return mask
+
+
 class MLP(nn.Module):
     def __init__(self, input_dim, output_dim):
         super(MLP, self).__init__()

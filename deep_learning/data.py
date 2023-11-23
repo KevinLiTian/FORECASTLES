@@ -8,7 +8,8 @@ import tqdm
 def load_sequence_data(data_path):
     all_shelter_data = pd.read_csv(data_path, low_memory=False)
     all_shelter_data['OCCUPANCY_DATE'] = pd.to_datetime(all_shelter_data['OCCUPANCY_DATE'])
-    toronto_data = all_shelter_data[all_shelter_data["LOCATION_CITY"] == "Toronto"]
+    # toronto_data = all_shelter_data[all_shelter_data["LOCATION_CITY"] == "Toronto"]
+    toronto_data = all_shelter_data
     toronto_data['MONTH'] = toronto_data['OCCUPANCY_DATE'].dt.month
     toronto_data['DAY'] = toronto_data['OCCUPANCY_DATE'].dt.day
     toronto_data['YEAR'] = toronto_data['OCCUPANCY_DATE'].dt.year
@@ -37,15 +38,19 @@ def load_sequence_data(data_path):
     toronto_data_dr_nan = toronto_data_dr_nan.drop(columns=["PROGRAM_MODEL", "CAPACITY_TYPE"])
 
     final_df = toronto_data_dr_nan
-    occu_final_df = toronto_data_dr_nan
-    occu_final_df = occu_final_df[occu_final_df['YEAR']==2023]
-    info = {"test_dated": occu_final_df.reset_index(drop=True)}
+    # occu_final_df = toronto_data_dr_nan
+    # occu_final_df = occu_final_df[occu_final_df['YEAR']==2023]
+    # info = {"test_dated": occu_final_df.reset_index(drop=True)}
     final_df = final_df.fillna(value=0.0)
     test = final_df[final_df['YEAR']==2023]
     train = final_df[(final_df['YEAR']==2021) | (final_df['YEAR']==2022)]
     train = train.drop(columns=['YEAR'])
     test = test.drop(columns=['YEAR'])
     X_train, X_test, y_train, y_test = train, test, train['SERVICE_USER_COUNT'], test['SERVICE_USER_COUNT']
+    info = {"X_train": X_train.copy().reset_index(drop=True),
+            "X_test":  X_test.copy().reset_index(drop=True),
+            "y_train": y_train.copy().reset_index(drop=True),
+            "y_test":  y_test.copy().reset_index(drop=True)}
     sc = StandardScaler()
     # print(list(X_train.select_dtypes(include=['object']).columns))
     # Fit_transform on train data
@@ -58,7 +63,6 @@ def load_sequence_data(data_path):
     info["scaler"] = sc
     print("Data loaded")
     return X_train.reset_index(drop=True), X_test.reset_index(drop=True), y_train.reset_index(drop=True), y_test.reset_index(drop=True), info
-
 
 def load_data(include_capacity=True):
     occupancy_data_2023 = pd.read_csv("../data/occupancy/Daily_shelter_overnight_occupancy.csv", low_memory=False)
@@ -179,7 +183,7 @@ class SlowSequenceDataset(Dataset):
     def __init__(self, data_x, data_y, window=30):
         # self.x = torch.from_numpy(data_x)
         # self.y = torch.from_numpy(data_y)
-        cols = [col for col in data_x.columns if col[0] != 'V']
+        cols = [col for col in data_x.columns if col[0]!='V']
         data_cols = [col for col in data_x.columns]
         data_cols.remove("OCCUPANCY_DATE")
         self.data_cols = data_cols
@@ -187,59 +191,58 @@ class SlowSequenceDataset(Dataset):
         cols.remove("SERVICE_USER_COUNT")
         cols.remove("MONTH")
         cols.remove("DAY")
+        if "UNSCALED_SC" in cols:
+          cols.remove("UNSCALED_SC")
         data_x["GNUM"] = data_x.groupby(cols).ngroup()
         data_x["LOG_CNT"] = data_y
         data_x['index_col'] = list(data_x.index)
         self.x = data_x
-        self.cumsum = np.cumsum(
-            np.clip((data_x.groupby("GNUM").count()["OCCUPANCY_DATE"].to_numpy() - window), a_min=0, a_max=None))
+        self.cumsum = np.cumsum(np.clip((data_x.groupby("GNUM").count()["OCCUPANCY_DATE"].to_numpy() - window), a_min=0, a_max=None))
         self.length = self.cumsum[-1]
         self.window = window
-        # self.gnum_subsets = []
-        # for gnum in self.x["GNUM"]:
-        #     subset = self.x[self.x["GNUM"]==gnum]
-        #     self.gnum_subsets.append((subset[self.data_cols],))
+        self.gnum_subsets = []
+        max_gnum = self.x["GNUM"].max()
+        for gnum in tqdm.tqdm(range(max_gnum)):
+            subset = self.x[self.x["GNUM"]==gnum]
+            self.gnum_subsets.append(subset.copy())
 
     def __len__(self):
         return self.length
 
     def __getitem__(self, index):
-        diff = self.cumsum - index
-        gnum = np.argmax(diff > 0)
-        if gnum == 0:
-            g_idx = index
+        diff = self.cumsum-index
+        gnum = np.argmax(diff>0)
+        if gnum==0:
+          g_idx = index
         else:
-            g_idx = index - self.cumsum[gnum - 1]
-        subset = self.x[self.x["GNUM"] == gnum]
+          g_idx = index-self.cumsum[gnum-1]
+        # subset = self.x[self.x["GNUM"]==gnum]
         # print(subset["index_col"])
-        return torch.from_numpy(subset[self.data_cols].to_numpy())[g_idx:g_idx + self.window].float(), \
-               torch.from_numpy(np.expand_dims(subset["LOG_CNT"].to_numpy(), axis=-1))[g_idx + self.window].float(), \
-               subset["index_col"].to_numpy()[g_idx + self.window], subset.iloc[g_idx:g_idx + self.window]
+        # return torch.from_numpy(subset[self.data_cols].to_numpy())[g_idx:g_idx+self.window].float(), torch.from_numpy(np.expand_dims(subset["LOG_CNT"].to_numpy(), axis=-1))[g_idx+self.window].float(), subset["index_col"].to_numpy()[g_idx+self.window], subset.iloc[g_idx:g_idx+self.window]
         # subset_x, subset_y  = self.gnum_subsets[gnum]
-        # return torch.from_numpy(self.gnum_subsets[gnum][0].to_numpy())[g_idx:g_idx+self.window].float(), torch.from_numpy(self.gnum_subsets[gnum][1])[g_idx+self.window].float()
-
+        return torch.from_numpy(self.gnum_subsets[gnum][self.data_cols].to_numpy())[g_idx:g_idx+self.window].float(), torch.from_numpy(np.expand_dims(self.gnum_subsets[gnum]["LOG_CNT"].to_numpy(), axis=-1))[g_idx+self.window].float(), self.gnum_subsets[gnum]["index_col"].to_numpy()[g_idx+self.window], self.gnum_subsets[gnum].iloc[g_idx:g_idx+self.window]
     def get_gid(self, index):
-        diff = self.cumsum - index
-        gnum = np.argmax(diff > 0)
-        if gnum == 0:
-            g_idx = index
+        diff = self.cumsum-index
+        gnum = np.argmax(diff>0)
+        if gnum==0:
+          g_idx = index
         else:
-            g_idx = index - self.cumsum[gnum - 1]
+          g_idx = index-self.cumsum[gnum-1]
         return g_idx
 
     def get_df(self):
         return self.x
 
     def get_gnum(self, index):
-        diff = self.cumsum - index
-        gnum = np.argmax(diff > 0)
+        diff = self.cumsum-index
+        gnum = np.argmax(diff>0)
         return gnum
 
     def get_df_index(self, index):
         gnum = self.get_gnum(index)
         gidx = self.get_gid(index)
-        subset = self.x[self.x["GNUM"] == gnum]
-        return subset["index_col"][gidx + self.window]
+        subset = self.x[self.x["GNUM"]==gnum]
+        return subset["index_col"][gidx+self.window]
 
 
 class NewsDataset(Dataset):
@@ -256,7 +259,42 @@ class NewsDataset(Dataset):
     def __getitem__(self, index):
         return self.news_data[index:index+self.window], self.x[index:index+self.window].float(), self.y[index+self.window-1].float()
 
+class FullTransSequenceDataset(Dataset):
+    def __init__(self, data_x, data_y, window=30):
+        # self.x = torch.from_numpy(data_x)
+        # self.y = torch.from_numpy(data_y)
+        cols = [col for col in data_x.columns if col[0]!='V']
+        data_cols = [col for col in data_x.columns]
+        data_cols.remove("OCCUPANCY_DATE")
+        self.data_cols = data_cols
+        cols.remove("OCCUPANCY_DATE")
+        cols.remove("SERVICE_USER_COUNT")
+        cols.remove("MONTH")
+        cols.remove("DAY")
+        data_x["GNUM"] = data_x.groupby(cols).ngroup()
+        data_x["LOG_CNT"] = data_y
+        self.x = data_x
+        self.cumsum = np.cumsum(np.clip((data_x.groupby("GNUM").count()["OCCUPANCY_DATE"].to_numpy() - window), a_min=0, a_max=None))
+        self.length = self.cumsum[-1]
+        self.window = window
+        self.gnum_subsets = []
+        max_gnum = self.x["GNUM"].max()
+        for gnum in tqdm.tqdm(range(max_gnum)):
+            subset = self.x[self.x["GNUM"]==gnum]
+            self.gnum_subsets.append((subset[self.data_cols], np.expand_dims(subset["LOG_CNT"].to_numpy(), axis=-1)))
 
+    def __len__(self):
+        return self.length
+
+    def __getitem__(self, index):
+        diff = self.cumsum-index
+        gnum = np.argmax(diff>0)
+        if gnum==0:
+          g_idx = index
+        else:
+          g_idx = index-self.cumsum[gnum-1]
+        # subset_x, subset_y  = self.gnum_subsets[gnum]
+        return torch.from_numpy(self.gnum_subsets[gnum][0].to_numpy())[g_idx:g_idx+self.window].float(), torch.from_numpy(self.gnum_subsets[gnum][1])[g_idx:g_idx+self.window].float(), torch.from_numpy(self.gnum_subsets[gnum][1])[g_idx+1:g_idx+self.window+1].float()
 if __name__ == "__main__":
     X_train_scaled, X_test_scaled, y_train, y_test = load_data()
     train_dataset = DefaultDataset(X_train_scaled.to_numpy(), np.asarray(y_train))
