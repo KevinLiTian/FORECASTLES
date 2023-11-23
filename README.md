@@ -15,3 +15,9 @@ The source code resides in `baseline/pca.ipynb`.
 Since PCA + random forest has the best performance, we further tuned the hyperparameters of the random forest model. The result shows that the best hyperparameter is `n_estimators=400`.
 
 The source code resides in `baseline/pca_random_forest.ipynb`.
+
+#### PCA + Quantile Forest
+
+We also tried quantile forest, which is a variant of random forest. The result shows that PCA + quantile forest performs worse than PCA + random forest.
+
+The source code resides in `baseline/quantile_forest.ipynb`.
