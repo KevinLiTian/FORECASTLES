@@ -4,6 +4,7 @@ library(leaflet)
 library(sf)
 library(tidyverse)
 library(lubridate)
+library(scales)
 
 # Get data
 shelters <- read_csv("shelter.csv")
@@ -61,7 +62,15 @@ makeTimeSeriesPlot <- function (loc_name) {
   selected_shelter_data <- shelter_time_plot[shelter_time_plot$LOCATION_NAME == loc_name,]
   selected_shelter_data <- selected_shelter_data[!is.na(selected_shelter_data$LOCATION_NAME),]
   
-  colors <- c("Capacity" = "blue", "Predicted Service User Count" = "purple", "Actual Service User Count" = "darkgreen")
+  selected_shelter_data <- selected_shelter_data %>%
+    select(date, SERVICE_USER_COUNT, SERVICE_USER_COUNT_PRED) %>%
+    group_by(date) %>%
+    summarise(
+      SERVICE_USER_COUNT = sum(SERVICE_USER_COUNT),
+      SERVICE_USER_COUNT_PRED = sum(SERVICE_USER_COUNT_PRED)
+    )
+  
+  colors <- c("Predicted" = "purple", "Actual" = "darkgreen")
   
   
   loc_cap <- shelter_occupancy[shelter_occupancy$LOCATION_NAME == loc_name,]
@@ -70,36 +79,49 @@ makeTimeSeriesPlot <- function (loc_name) {
   
   p <- ggplot() +
     geom_line(data = selected_shelter_data, mapping = aes(
-      x = date, y = SERVICE_USER_COUNT, colour = "Actual Service User Count")) +
+      x = date, y = SERVICE_USER_COUNT, colour = "Actual")) +
     geom_line(data = selected_shelter_data, mapping = aes(
-      x = date, y = SERVICE_USER_COUNT_PRED, colour = "Predicted Service User Count")) +
-    geom_line(data = loc_cap, mapping = aes(
-      x = OCCUPANCY_DATE, y = CAPACITY_ACTUAL_BED, colour = "Capacity")) +
-    geom_line(data = loc_cap, mapping = aes(
-      x = OCCUPANCY_DATE, y = CAPACITY_ACTUAL_ROOM, colour = "Capacity")) +
-    labs(title = str_c("Predicted service users for ", loc_name), x = "Date", y = "Service User Count", colour = "Legend") +
-    scale_color_manual(values = colors)
+      x = date, y = SERVICE_USER_COUNT_PRED, colour = "Predicted")) +
+    labs(title = str_wrap(str_c("Service users for ", loc_name), width = 50), x = "Date", y = "Service User Count", colour = "Legend") +
+    scale_color_manual(values = colors) +
+    scale_x_date(labels = date_format("%Y-%m")) +
+    theme(legend.position = "top",
+          legend.direction = "horizontal",
+          legend.title = element_blank()
+    )
   
   return (p)
 }
 
 
-
-# Create shiny app
-ui <- bootstrapPage(
-  tags$style(type = "text/css", "html, body {width:100%;height:100%}"),
-  leafletOutput("map", width = "100%", height = "100%"),
-  absolutePanel(top = 10, right = 10,
-                plotOutput("pred_model", width = "20%", height = "20%")
+ui <- fluidPage(
+  # App title
+  titlePanel("Homeless Shelter Occupancy Predictions in Toronto"),
+  
+  # Sidebar layout with input and output definitions
+  sidebarLayout(
+    # Main panel for displaying outputs
+    mainPanel(
+      tags$style(type = "text/css",
+                 ".shiny-output-error { visibility: hidden; }",
+                 ".shiny-output-error:before { visibility: hidden; }",
+                 "#map {height: calc(100vh - 80px) !important;}"
+      ),
+      # Output: interactive map
+      leafletOutput("map")
+    ),
+    
+    # Sidebar panel 
+    sidebarPanel(
+      plotOutput("pred_model")
+    )
   )
+  
 )
 
 server <- function(input, output, session) {
   
   output$map <- renderLeaflet({
-    # Use leaflet() here, and only include aspects of the map that
-    # won't need to change dynamically (at least, not unless the
-    # entire map is being torn down and recreated).
     leaflet() %>% addTiles() %>%
       addPolygons(
         data = neighbourhood_geometry,
@@ -121,20 +143,15 @@ server <- function(input, output, session) {
         layerId = ~LOCATION_ID,
       )
   })
-
-  observeEvent(input$map_click, { 
-    event <- input$map_click
-    clickAreaName <- individual_shelters$LOCATION_NAME[individual_shelters$LOCATION_ID == event$id][1]
-    if (!is.na(clickAreaName)) {
-        output$pred_model <- renderPlot({
-        makeTimeSeriesPlot(clickAreaName)
-      })
-    } else {
-      output$pred_model <- renderPlot({
-        ggplot() + title(clickAreaName)
-      })
-    }
+  
+  observeEvent(input$map_marker_click, {
+    click <- input$map_marker_click
+    shelter <- shelter_cleaned[which(shelter_cleaned$LAT == click$lat & shelter_cleaned$LON == click$lng), ]$LOCATION_NAME
+    output$pred_model <- renderPlot({
+      makeTimeSeriesPlot(shelter)
+    })
   })
+  
 }
 
 shinyApp(ui, server)
