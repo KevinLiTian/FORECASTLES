@@ -41,6 +41,7 @@ def load_sequence_data(data_path):
     # occu_final_df = toronto_data_dr_nan
     # occu_final_df = occu_final_df[occu_final_df['YEAR']==2023]
     # info = {"test_dated": occu_final_df.reset_index(drop=True)}
+    final_df = final_df[final_df["V1"].notna()]
     final_df = final_df.fillna(value=0.0)
     test = final_df[final_df['YEAR']==2023]
     train = final_df[(final_df['YEAR']==2021) | (final_df['YEAR']==2022)]
@@ -50,7 +51,8 @@ def load_sequence_data(data_path):
     info = {"X_train": X_train.copy().reset_index(drop=True),
             "X_test":  X_test.copy().reset_index(drop=True),
             "y_train": y_train.copy().reset_index(drop=True),
-            "y_test":  y_test.copy().reset_index(drop=True)}
+            "y_test":  y_test.copy().reset_index(drop=True),
+            "final_df": final_df.copy().reset_index(drop=True)}
     sc = StandardScaler()
     # print(list(X_train.select_dtypes(include=['object']).columns))
     # Fit_transform on train data
@@ -296,17 +298,19 @@ class FullTransSequenceDataset(Dataset):
         # subset_x, subset_y  = self.gnum_subsets[gnum]
         return torch.from_numpy(self.gnum_subsets[gnum][0].to_numpy())[g_idx:g_idx+self.window].float(), torch.from_numpy(self.gnum_subsets[gnum][1])[g_idx:g_idx+self.window].float(), torch.from_numpy(self.gnum_subsets[gnum][1])[g_idx+1:g_idx+self.window+1].float()
 if __name__ == "__main__":
-    X_train_scaled, X_test_scaled, y_train, y_test = load_data()
-    train_dataset = DefaultDataset(X_train_scaled.to_numpy(), np.asarray(y_train))
-    test_dataset = DefaultDataset(X_test_scaled.to_numpy(), np.asarray(y_test))
-    # train_dataset = SequenceDataset(X_train_scaled.to_numpy(), np.log10(np.expand_dims(np.asarray(y_train), axis=-1)))
-    # test_dataset = SequenceDataset(X_test_scaled.to_numpy(), np.log10(np.expand_dims(np.asarray(y_test), axis=-1)))
-
-    x, y = train_dataset[10]
-    print(x.shape, y.shape)
-
-    train_dataloader = DataLoader(dataset=train_dataset, batch_size=32, shuffle=True)
-    test_dataloader = DataLoader(dataset=test_dataset, batch_size=512, shuffle=True)
-
-    print(f"Training data batches {len(train_dataloader)}")
-    print(f"Testing data batches {len(test_dataloader)}")
+    X_train_scaled, X_test_scaled, y_train, y_test, info = load_sequence_data("./shelter_neighbourhood_features_pca.csv")
+    df = info["final_df"]
+    print(df[df.columns[:50]].info())
+    # train_dataset = DefaultDataset(X_train_scaled.to_numpy(), np.asarray(y_train))
+    # test_dataset = DefaultDataset(X_test_scaled.to_numpy(), np.asarray(y_test))
+    # # train_dataset = SequenceDataset(X_train_scaled.to_numpy(), np.log10(np.expand_dims(np.asarray(y_train), axis=-1)))
+    # # test_dataset = SequenceDataset(X_test_scaled.to_numpy(), np.log10(np.expand_dims(np.asarray(y_test), axis=-1)))
+    #
+    # x, y = train_dataset[10]
+    # print(x.shape, y.shape)
+    #
+    # train_dataloader = DataLoader(dataset=train_dataset, batch_size=32, shuffle=True)
+    # test_dataloader = DataLoader(dataset=test_dataset, batch_size=512, shuffle=True)
+    #
+    # print(f"Training data batches {len(train_dataloader)}")
+    # print(f"Testing data batches {len(test_dataloader)}")
