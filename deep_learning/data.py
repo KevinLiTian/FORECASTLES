@@ -10,8 +10,10 @@ def load_sequence_data(data_path):
     all_shelter_data['OCCUPANCY_DATE'] = pd.to_datetime(all_shelter_data['OCCUPANCY_DATE'])
     # toronto_data = all_shelter_data[all_shelter_data["LOCATION_CITY"] == "Toronto"]
     toronto_data = all_shelter_data
-    toronto_data['MONTH'] = toronto_data['OCCUPANCY_DATE'].dt.month
-    toronto_data['DAY'] = toronto_data['OCCUPANCY_DATE'].dt.day
+    toronto_data['T'] = (toronto_data['OCCUPANCY_DATE']-pd.to_datetime("2020/12/31")).dt.total_seconds()
+    toronto_data['T'] = toronto_data['T']/toronto_data['T'].max()
+    # toronto_data['MONTH'] = toronto_data['OCCUPANCY_DATE'].dt.month
+    # toronto_data['DAY'] = toronto_data['OCCUPANCY_DATE'].dt.day
     toronto_data['YEAR'] = toronto_data['OCCUPANCY_DATE'].dt.year
     # df[df["LOCATION_CITY"]=="Toronto"].groupby(["OCCUPANCY_DATE", "LOCATION_ID", "SHELTER_ID", "SECTOR", "PROGRAM_MODEL", "CAPACITY_TYPE"])
     drop_cols = ['_id', 'ORGANIZATION_ID', 'ORGANIZATION_NAME', 'SHELTER_GROUP',
@@ -45,8 +47,8 @@ def load_sequence_data(data_path):
     final_df = final_df.fillna(value=0.0)
     test = final_df[final_df['YEAR']==2023]
     train = final_df[(final_df['YEAR']==2021) | (final_df['YEAR']==2022)]
-    # train = train.drop(columns=['YEAR'])
-    # test = test.drop(columns=['YEAR'])
+    train = train.drop(columns=['YEAR'])
+    test = test.drop(columns=['YEAR'])
     X_train, X_test, y_train, y_test = train, test, train['SERVICE_USER_COUNT'], test['SERVICE_USER_COUNT']
     info = {"X_train": X_train.copy().reset_index(drop=True),
             "X_test":  X_test.copy().reset_index(drop=True),
@@ -191,9 +193,9 @@ class SlowSequenceDataset(Dataset):
         self.data_cols = data_cols
         cols.remove("OCCUPANCY_DATE")
         cols.remove("SERVICE_USER_COUNT")
-        cols.remove("MONTH")
-        cols.remove("DAY")
-        cols.remove("YEAR")
+        # cols.remove("MONTH")
+        # cols.remove("DAY")
+        cols.remove("T")
         if "UNSCALED_SC" in cols:
           cols.remove("UNSCALED_SC")
         data_x["GNUM"] = data_x.groupby(cols).ngroup()
@@ -272,9 +274,9 @@ class FullTransSequenceDataset(Dataset):
         self.data_cols = data_cols
         cols.remove("OCCUPANCY_DATE")
         cols.remove("SERVICE_USER_COUNT")
-        cols.remove("MONTH")
-        cols.remove("DAY")
-        cols.remove("YEAR")
+        # cols.remove("MONTH")
+        # cols.remove("DAY")
+        cols.remove("T")
         data_x["GNUM"] = data_x.groupby(cols).ngroup()
         data_x["LOG_CNT"] = data_y
         self.x = data_x
