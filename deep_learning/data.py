@@ -45,8 +45,8 @@ def load_sequence_data(data_path):
     final_df = final_df.fillna(value=0.0)
     test = final_df[final_df['YEAR']==2023]
     train = final_df[(final_df['YEAR']==2021) | (final_df['YEAR']==2022)]
-    train = train.drop(columns=['YEAR'])
-    test = test.drop(columns=['YEAR'])
+    # train = train.drop(columns=['YEAR'])
+    # test = test.drop(columns=['YEAR'])
     X_train, X_test, y_train, y_test = train, test, train['SERVICE_USER_COUNT'], test['SERVICE_USER_COUNT']
     info = {"X_train": X_train.copy().reset_index(drop=True),
             "X_test":  X_test.copy().reset_index(drop=True),
@@ -193,6 +193,7 @@ class SlowSequenceDataset(Dataset):
         cols.remove("SERVICE_USER_COUNT")
         cols.remove("MONTH")
         cols.remove("DAY")
+        cols.remove("YEAR")
         if "UNSCALED_SC" in cols:
           cols.remove("UNSCALED_SC")
         data_x["GNUM"] = data_x.groupby(cols).ngroup()
@@ -273,6 +274,7 @@ class FullTransSequenceDataset(Dataset):
         cols.remove("SERVICE_USER_COUNT")
         cols.remove("MONTH")
         cols.remove("DAY")
+        cols.remove("YEAR")
         data_x["GNUM"] = data_x.groupby(cols).ngroup()
         data_x["LOG_CNT"] = data_y
         self.x = data_x

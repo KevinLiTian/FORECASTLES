@@ -444,18 +444,18 @@ def train_fullTrans(combined_data_path):
                       num_layers=2,
                       num_heads=4,
                       output_dim=1).to("cuda")
-    train_dataloader = DataLoader(dataset=train_dataset, batch_size=32, shuffle=True)
-    test_dataloader = DataLoader(dataset=test_dataset, batch_size=32, shuffle=False)
+    train_dataloader = DataLoader(dataset=train_dataset, batch_size=128, shuffle=True)
+    test_dataloader = DataLoader(dataset=test_dataset, batch_size=128, shuffle=False)
 
     criterion = nn.MSELoss()
-    optimizer = torch.optim.Adam(model.parameters(), lr=1.0e-5)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=5.0e-5)
     model, history = train_full_trans(
         model,
         criterion,
         optimizer,
         train_dataloader,
         test_dataloader,
-        save_file_name='./full_trans_model_4h_2l_256.pt',
+        save_file_name='./trained_models/full_trans_model_4h_2l_256_datafix_year2.pt',
         max_epochs_stop=20,
         n_epochs=200,
         print_every=1)
