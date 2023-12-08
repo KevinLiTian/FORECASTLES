@@ -25,7 +25,8 @@ Our goal is to optimize shelter usage in Toronto and increase access, as many ar
 - **City of Toronto’s Open Data Portal:**
   - [Daily Shelter & Overnight Service Occupancy & Capacity dataset](https://open.toronto.ca/dataset/daily-shelter-overnight-service-occupancy-capacity/)
   - [Central Intake calls dataset](https://open.toronto.ca/dataset/central-intake-calls/)
-- **Neighbourhood Profiles**
+  - [Neighbourhood Profiles](https://open.toronto.ca/dataset/neighbourhood-profiles/)
+  - [Neighbourhood GEOJSON](https://open.toronto.ca/dataset/neighbourhoods/)
 
 ## Map Visualization - Demo
 We developed a Shiny app to visualize predictions, demonstrating user count forecasts for various shelters and neighborhoods in Toronto.
