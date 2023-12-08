@@ -1,23 +1,41 @@
-# FORECASTLES
+# Forecasting Shelter Space Needs in Toronto
 
-## Baseline
+## Introduction
+Welcome to our project, led by the Homies team, focusing on forecasting shelter space needs in Toronto.
 
-### PCA
+### Team Members
+- [Kimlin Chin](https://github.com/KCtt457)
+- [Kevin Li](https://github.com/KevinLiTian)
+- [Michelle Lin](https://github.com/michellemlin)
+- [Abhijoy Mandal](https://github.com/Abhijoy-Mandal)
+- [Donna Qi](https://github.com/donnaqi)
 
-> Principal component analysis, or PCA, is a statistical procedure that allows you to summarize the information content in large data tables by means of a smaller set of “summary indices” that can be more easily visualized and analyzed. -- [What is PCA](https://www.sartorius.com/en/knowledge/science-snippets/what-is-principal-component-analysis-pca-and-how-it-is-used-507186#:~:text=Principal%20component%20analysis%2C%20or%20PCA,more%20easily%20visualized%20and%20analyzed.)
+## Homelessness in Toronto
+"Homelessness is a profound assault on dignity, social inclusion and the right to life" ~ United Nations. In Toronto, homelessness has been declared a city emergency, with over 10,000 people affected daily.
 
-PCA allows us to extract insightful information from a large dataset. In this project, we used PCA to reduce the dimensionality of our dataset and then use the reduced dataset to train a prediction model. We tried several models including linear regression, SVM, and random forest. The result shows that PCA + random forest has the best performance.
+## Motivation
+Our goal is to optimize shelter usage in Toronto and increase access, as many are turned away daily despite shelters not being at full capacity.
 
-The source code resides in `baseline/pca.ipynb`.
+## Project Aims
+1. Predict service user counts for existing shelters to optimize resource allocation.
+2. Forecast demand in neighborhoods without shelters to guide new shelter construction.
 
-#### PCA + Random Forest
+## Data
 
-Since PCA + random forest has the best performance, we further tuned the hyperparameters of the random forest model. The result shows that the best hyperparameter is `n_estimators=400`.
+- **City of Toronto’s Open Data Portal:**
+  - [Daily Shelter & Overnight Service Occupancy & Capacity dataset](https://open.toronto.ca/dataset/daily-shelter-overnight-service-occupancy-capacity/)
+  - [Central Intake calls dataset](https://open.toronto.ca/dataset/central-intake-calls/)
+  - [Neighbourhood Profiles](https://open.toronto.ca/dataset/neighbourhood-profiles/)
+  - [Neighbourhood GEOJSON](https://open.toronto.ca/dataset/neighbourhoods/)
 
-The source code resides in `baseline/pca_random_forest.ipynb`.
+## Map Visualization - Demo
+We developed a Shiny app to visualize predictions, demonstrating user count forecasts for various shelters and neighborhoods in Toronto.
 
-#### PCA + Quantile Forest
+## Limitations and Future Directions
+- Expansion of the model beyond Toronto.
+- Integration of more stable and diverse data sets.
+- Focusing on demographic-specific trends in homelessness.
+- Investigating the relationship between housing prices and homelessness.
 
-We also tried quantile forest, which is a variant of random forest. The result shows that PCA + quantile forest performs worse than PCA + random forest.
-
-The source code resides in `baseline/quantile_forest.ipynb`.
+## Conclusion
+Our model is a significant step towards data-driven management of shelter spaces, aiding in decision-making for budgeting and planning for future years. It's a proactive tool for addressing the growing needs of the homeless population in Toronto.
