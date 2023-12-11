@@ -50,4 +50,4 @@ Our model is a significant step towards data-driven management of shelter spaces
 
 ## ACKNOWLEDGEMENTS
 
-These were developed as part of RBC Borealis AI - Let's Solve It Mentorship Programme.
+This project was developed as part of RBC Borealis AI - Let's Solve It Mentorship Programme.
